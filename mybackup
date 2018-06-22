@@ -1,0 +1,96 @@
+#!/bin/bash
+
+set -euo pipefail
+IFS=$'\n\t '
+
+if [[ $# -eq 0 ]]; then
+cat << EOL
+$0 missed arguments
+-h hostname
+-p interactive password
+-P password
+-u username
+-v verbose
+-d database 
+EOL
+exit 1
+fi
+
+USER=root
+PASSWORD=
+HOST=localhost
+DATABASE=
+VERBOSE=
+POSITIONAL=()
+
+while [[ $# -gt 0 ]]
+do
+  case "$1" in
+    -u|--user)
+    USER="$2"
+    shift
+    ;;
+    -h|--host)
+    HOST="$2"
+    shift
+    ;;
+    -p)
+    echo "Please, input password"
+    read -s PASSWORD
+    ;;
+    -d|--database)
+    DATABASE="$2"
+    shift
+    ;;
+    -v)
+    VERBOSE=YES
+    ;;
+    -P|--password)
+    PASSWORD="$2"
+    shift
+    ;;
+    *)    # unknown option
+    POSITIONAL+=("$1") # save it in an array for later
+    ;;
+  esac
+  shift
+done
+
+
+backup_db() {
+    #hostname user password database
+    local HOST=$1
+    local USER=$2
+    local PASSWORD=$3
+    local DATABASE=$4
+    local VERBOSE=$5
+
+    [ -z $DATABASE ] && echo "missing database" && return 1
+
+    [ -z $USER ] && echo "missing user" && return 1
+
+    [ -z $HOST ] && echo "missing host" && return 1
+
+    [ -n "$VERBOSE" ] && echo 'start backuping $DATABASE'
+    
+    [ ! -d $DATABASE ] && mkdir $DATABASE
+    
+    tables=`echo 'SHOW TABLES;' | mysql -u $USER --password=$PASSWORD $DATABASE`
+    tables=( $tables )
+
+    for table in ${tables[@]:1}; do
+    [ -n "$VERBOSE" ] && echo "Exporting $table..."
+    mysqldump -u $USER --password=$PASSWORD $DATABASE $table > $DATABASE/$table.sql
+    done
+
+    NAME=$DATABASE-`date +%Y-%m-%d`.tar.gz
+
+    [ -n "$VERBOSE" ] && echo 'Start compression...'
+
+    tar cfz $NAME $DATABASE
+    rm -rf ./$DATABASE
+
+    [ -n "$VERBOSE" ] && echo 'Done!'
+}
+
+backup_db "$HOST" "$USER" "$PASSWORD" "$DATABASE" "$VERBOSE"
